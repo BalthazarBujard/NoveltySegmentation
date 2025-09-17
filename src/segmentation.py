@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.signal import find_peaks
-from librosa import frames_to_samples
+from librosa import frames_to_samples, samples_to_frames
 from .utils import *
 
 
@@ -20,7 +20,9 @@ class MultiGranularSegmentation():
         else :
             raise NotImplementedError()
         
+        self.min_segment_duration = min_segment_duration
         self.normalize = normalize
+
 
 
 
@@ -86,28 +88,31 @@ class MultiGranularSegmentation():
         thresh = mu+2*std
         peaks, _ = find_peaks(nov, height=thresh, distance=time_to_frames(min_segment_duration,sr=self.sr,hop_length=self.n_fft,n_fft=self.n_fft))
 
-        peaks = non_maximum_suppression_1d(peaks, nov, 5)
 
-        peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
-        peaks_samples = np.concatenate([[0],peaks_samples])
-
-        return peaks_samples
+        return peaks
     
     def find_peaks_robust(self, nov, L, I, T):
         #nov, scales = self.compute_novelty(y, n_fft)
 
         peaks = robust_peak_detection(nov, L, I, T)
 
-        #peaks = non_maximum_suppression_1d(peaks, nov, 5)
+        # peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
+        # peaks_samples = np.concatenate([[0],peaks_samples])
+
+        return peaks
+    
+    def find_peaks(self, nov):
+        
+        peaks = self.find_peaks_easy(nov, **self.peak_detection_kwargs) if self.peak_detection == "easy" else self.find_peaks_robust(nov,**self.peak_detection_kwargs)
+
+        delta = samples_to_frames(int(self.min_segment_duration*self.sr))
+        peaks = non_maximum_suppression_1d(peaks, nov, delta)
 
         peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
         peaks_samples = np.concatenate([[0],peaks_samples])
 
         return peaks_samples
-    
-    def find_peaks(self, nov):
-        
-        return self.find_peaks_easy(nov, **self.peak_detection_kwargs) if self.peak_detection == "easy" else self.find_peaks_robust(nov,**self.peak_detection_kwargs)
+
     
     def segment(self, y):
         nov, scales = self.compute_novelty(y)
@@ -115,6 +120,8 @@ class MultiGranularSegmentation():
         nov = (nov-min(nov))/(max(nov)-min(nov)) #normalize
 
         peaks = self.find_peaks(nov)
+
+        #peaks = non_maximum_suppression_1d(peaks, nov, self.min_segment_duration)
 
         segments = [y[t0:t1] for t0,t1 in zip(peaks[:-1],peaks[1:])]
 
