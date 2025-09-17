@@ -6,7 +6,7 @@ from .utils import *
 
 # TODO : create base class
 class MultiGranularSegmentation():
-    def __init__(self, sr, n_fft, peak_detection, L=20, I=0., T=4, min_segment_duration=0.1):
+    def __init__(self, sr, n_fft, peak_detection, L=20, I=1, T=2, min_segment_duration=0.1, normalize = True):
         
         self.sr = sr
         self.n_fft = n_fft 
@@ -19,10 +19,12 @@ class MultiGranularSegmentation():
             self.peak_detection_kwargs = {"L":L, "I":I, "T":T}
         else :
             raise NotImplementedError()
+        
+        self.normalize = normalize
 
 
 
-    def _compute_dssm(self,y):
+    def _compute_causal_dssm(self,y):
         #compute SSM from STFT
         ssm = compute_ssm(y, self.n_fft)
         #remove future events from SSM
@@ -36,7 +38,7 @@ class MultiGranularSegmentation():
     
     def compute_novelty(self, y):
         
-        dssm = self._compute_dssm(y)
+        dssm = self._compute_causal_dssm(y)
 
         nov = np.zeros(dssm.shape[0])
         scales=np.zeros_like(nov)
@@ -71,6 +73,8 @@ class MultiGranularSegmentation():
             scales[t]=t_scale
             #contrasts[t]=contrast
         
+        if self.normalize : nov = (nov-min(nov))/(max(nov)-min(nov))
+
         return nov, scales
     
     def find_peaks_easy(self,nov, min_segment_duration=0.1):
@@ -85,7 +89,7 @@ class MultiGranularSegmentation():
         peaks = non_maximum_suppression_1d(peaks, nov, 5)
 
         peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
-        peaks_samples = np.concatenate([[0],peaks])
+        peaks_samples = np.concatenate([[0],peaks_samples])
 
         return peaks_samples
     
@@ -94,10 +98,10 @@ class MultiGranularSegmentation():
 
         peaks = robust_peak_detection(nov, L, I, T)
 
-        peaks = non_maximum_suppression_1d(peaks, nov, 5)
+        #peaks = non_maximum_suppression_1d(peaks, nov, 5)
 
         peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
-        peaks_samples = np.concatenate([[0],peaks])
+        peaks_samples = np.concatenate([[0],peaks_samples])
 
         return peaks_samples
     
@@ -107,6 +111,8 @@ class MultiGranularSegmentation():
     
     def segment(self, y):
         nov, scales = self.compute_novelty(y)
+
+        nov = (nov-min(nov))/(max(nov)-min(nov)) #normalize
 
         peaks = self.find_peaks(nov)
 
