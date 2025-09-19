@@ -109,7 +109,6 @@ class MultiGranularSegmentation():
         peaks = non_maximum_suppression_1d(peaks, nov, delta)
 
         peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
-        peaks_samples = np.concatenate([[0],peaks_samples])
 
         return peaks_samples
 
@@ -119,10 +118,12 @@ class MultiGranularSegmentation():
 
         nov = (nov-min(nov))/(max(nov)-min(nov)) #normalize
 
-        peaks = self.find_peaks(nov)
+        peaks = self.find_peaks(nov) #maximums in novelty <-> segmentation points
+
+        points = np.concatenate([[0],peaks,[len(y)]])
 
         #peaks = non_maximum_suppression_1d(peaks, nov, self.min_segment_duration)
 
-        segments = [y[t0:t1] for t0,t1 in zip(peaks[:-1],peaks[1:])]
+        segments = [y[t0:t1] for t0,t1 in zip(points[:-1],points[1:])]
 
-        return segments
+        return segments, points
