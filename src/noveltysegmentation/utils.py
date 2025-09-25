@@ -2,9 +2,9 @@ import numpy as np
 from librosa import stft, load, frames_to_time, clicks, time_to_frames, frames_to_samples
 
 #compute similarity matrix
-def compute_ssm(y, w_size):
+def compute_ssm(y, w_size, hop_length):
     #compute stft with window size w_size and no overlapping segments
-    fft = np.abs(stft(y,n_fft=w_size,hop_length=w_size)) #(freq_bins=nfft//2+1, frames)
+    fft = np.abs(stft(y,n_fft=w_size,hop_length=hop_length)) #(freq_bins=nfft//2+1, frames)
     
     X = fft.T #(frames, freq_bins)
     X_norm = X/(np.linalg.norm(X, axis=1, keepdims=True)+1e-9)
