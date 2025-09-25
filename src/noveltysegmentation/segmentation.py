@@ -92,7 +92,7 @@ class MultiGranularSegmentation():
         #easy peak detection
         mu, std = np.mean(nov), np.std(nov)
         thresh = mu+2*std
-        peaks, _ = find_peaks(nov, height=thresh, distance=time_to_frames(min_segment_duration,sr=self.sr,hop_length=self.n_fft,n_fft=self.n_fft))
+        peaks, _ = find_peaks(nov, height=thresh, distance=time_to_frames(min_segment_duration,sr=self.sr,hop_length=self.hop_length,n_fft=self.n_fft))
 
 
         return peaks
@@ -122,14 +122,14 @@ class MultiGranularSegmentation():
         peaks = self.find_peaks_easy(nov, **self.peak_detection_kwargs) if self.peak_detection == "easy" else self.find_peaks_robust(nov,**self.peak_detection_kwargs)
 
         #NMS
-        min_duration_frames = samples_to_frames(int(self.min_segment_duration*self.sr))
+        min_duration_frames = samples_to_frames(int(self.min_segment_duration*self.sr),n_fft=self.n_fft,hop_length=self.hop_length)
         peaks = non_maximum_suppression_1d(peaks, nov, min_duration_frames)
 
         #TODO:REFINE PEAKS WITH ENERGY CURVE
         peaks = self.refine_peaks(peaks,energy)
 
 
-        peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
+        peaks_samples = frames_to_samples(peaks,hop_length=self.hop_length, n_fft=self.n_fft)
 
         return peaks_samples
 
