@@ -33,7 +33,7 @@ class MultiGranularSegmentation():
 
     def _compute_causal_dssm(self,y):
         #compute SSM from STFT
-        ssm = compute_ssm(y, self.n_fft,self.hop_length)
+        ssm = compute_ssm(y, self.n_fft, self.hop_length)
         #remove future events from SSM
         ssm_causal = ssm
         for i in range(ssm.shape[0]):
@@ -50,7 +50,6 @@ class MultiGranularSegmentation():
 
         nov = np.zeros(dssm.shape[0])
         scales=np.zeros_like(nov)
-        #contrasts=np.zeros_like(nov)
         #at each time t 
         for t in range(1,dssm.shape[0]):
             #check the lines below t to asses temporal scale
@@ -59,35 +58,29 @@ class MultiGranularSegmentation():
                 
                 #1) check if ssm(t-i,t)<ssm(t-i,t-1) 
                 if s_t>=dssm[t-i,t-1]: 
-                    #print(s_t,ssm_causal[t-i,t-1])
                     break 
+
                 #2) check if ssm(t,t)<mean(line)-2*std(line)
                 line = dssm[t-i,t-i:t]
                 mu, std = np.mean(line), np.std(line)
                 
                 
                 if s_t >= mu - 2*std : 
-                    #print("s_t",s_t,", mean - 2*std:",mu-2*std)
                     break
             
-            #print(t,i)
             t_scale=i
             c_prev = dssm[t-1-t_scale:t-1,t-1]
             c = dssm[t-1-t_scale:t-1,t]
             contrast = np.linalg.norm(c-c_prev,ord=1)
-            #print(f"scale and contrast at time {t} : {t_scale}, {contrast}")
             
             nov[t]=contrast #the novelty curve is the contrast between the two columns t-1 and t in the range of the temporal scale
             scales[t]=t_scale
-            #contrasts[t]=contrast
         
         if self.normalize : nov = (nov-min(nov))/(max(nov)-min(nov))
 
         return nov, scales
     
     def find_peaks_easy(self,nov, min_segment_duration=0.1):
-       #nov, scales = self.compute_novelty(y, n_fft)
-        
 
         #easy peak detection
         mu, std = np.mean(nov), np.std(nov)
@@ -98,12 +91,8 @@ class MultiGranularSegmentation():
         return peaks
     
     def find_peaks_robust(self, nov, L, I, T):
-        #nov, scales = self.compute_novelty(y, n_fft)
 
         peaks = robust_peak_detection(nov, L, I, T)
-
-        # peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
-        # peaks_samples = np.concatenate([[0],peaks_samples])
 
         return peaks
     
@@ -111,7 +100,9 @@ class MultiGranularSegmentation():
         delta_frames = time_to_frames(self.delta,sr=self.sr,n_fft=self.n_fft,hop_length=self.hop_length)
         new_peaks = np.zeros_like(peaks)
         for i,peak in enumerate(peaks):
-            e = energy[peak-delta_frames:peak+delta_frames]
+            dx_ = max(0,peak-delta_frames)
+            dx = min(len(energy),peak+delta_frames)
+            e = energy[dx_:dx]
             new_peak = peak + np.argmin(e) - delta_frames
             new_peaks[i] = new_peak
         
@@ -120,16 +111,14 @@ class MultiGranularSegmentation():
     def find_peaks(self, nov, energy):
         
         peaks = self.find_peaks_easy(nov, **self.peak_detection_kwargs) if self.peak_detection == "easy" else self.find_peaks_robust(nov,**self.peak_detection_kwargs)
-
         #NMS
         min_duration_frames = samples_to_frames(int(self.min_segment_duration*self.sr),n_fft=self.n_fft,hop_length=self.hop_length)
         peaks = non_maximum_suppression_1d(peaks, nov, min_duration_frames)
 
-        #TODO:REFINE PEAKS WITH ENERGY CURVE
         peaks = self.refine_peaks(peaks,energy)
 
-
-        peaks_samples = frames_to_samples(peaks,hop_length=self.hop_length, n_fft=self.n_fft)
+        peaks_samples = frames_to_samples(peaks, n_fft=self.n_fft, hop_length=self.hop_length)
+        
 
         return peaks_samples
 
@@ -139,13 +128,11 @@ class MultiGranularSegmentation():
 
         nov = (nov-min(nov))/(max(nov)-min(nov)) #normalize
 
-        energy = rms(y=y,frame_length=self.n_fft,hop_length=self.hop_length)
-
+        energy = rms(y=y,frame_length=self.n_fft,hop_length=self.hop_length)[0]
+        
         peaks = self.find_peaks(nov, energy) #maximums in novelty <-> segmentation points
 
         points = np.concatenate([[0],peaks,[len(y)]])
-
-        #peaks = non_maximum_suppression_1d(peaks, nov, self.min_segment_duration)
 
         segments = [y[t0:t1] for t0,t1 in zip(points[:-1],points[1:])]
 
