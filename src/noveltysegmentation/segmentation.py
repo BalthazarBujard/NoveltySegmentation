@@ -1,16 +1,21 @@
 import numpy as np
 from scipy.signal import find_peaks
 from librosa import frames_to_samples, samples_to_frames
+from librosa.feature import rms
 from .utils import *
 
 
 # TODO : create base class
 class MultiGranularSegmentation():
-    def __init__(self, sr, n_fft, peak_detection, L=20, I=1, T=2, min_segment_duration=0.1, normalize = True):
+    def __init__(self, sr, n_fft, peak_detection, L=20, I=1, T=2, min_segment_duration=0.1, delta = 0.2, normalize = True, hop_length = None):
         
         self.sr = sr
         self.n_fft = n_fft 
+        if hop_length is None:
+            self.hop_length = n_fft
+        else : self.hop_length = hop_length
 
+        self.delta = delta
         self.peak_detection = peak_detection
 
         if peak_detection == "easy":
@@ -37,6 +42,7 @@ class MultiGranularSegmentation():
         dssm = 1-ssm_causal #dissimilarity matrix
 
         return dssm
+    
     
     def compute_novelty(self, y):
         
@@ -101,12 +107,27 @@ class MultiGranularSegmentation():
 
         return peaks
     
-    def find_peaks(self, nov):
+    def refine_peaks(self,peaks,energy):
+        delta_frames = time_to_frames(self.delta,sr=self.sr,n_fft=self.n_fft,hop_length=self.hop_length)
+        new_peaks = np.zeros_like(peaks)
+        for i,peak in enumerate(peaks):
+            e = energy[peak-delta_frames:peak+delta_frames]
+            new_peak = peak + np.argmin(e) - delta_frames
+            new_peaks[i] = new_peak
+        
+        return new_peaks
+    
+    def find_peaks(self, nov, energy):
         
         peaks = self.find_peaks_easy(nov, **self.peak_detection_kwargs) if self.peak_detection == "easy" else self.find_peaks_robust(nov,**self.peak_detection_kwargs)
 
-        delta = samples_to_frames(int(self.min_segment_duration*self.sr))
-        peaks = non_maximum_suppression_1d(peaks, nov, delta)
+        #NMS
+        min_duration_frames = samples_to_frames(int(self.min_segment_duration*self.sr))
+        peaks = non_maximum_suppression_1d(peaks, nov, min_duration_frames)
+
+        #TODO:REFINE PEAKS WITH ENERGY CURVE
+        peaks = self.refine_peaks(peaks,energy)
+
 
         peaks_samples = frames_to_samples(peaks,hop_length=self.n_fft, n_fft=self.n_fft)
 
@@ -118,7 +139,9 @@ class MultiGranularSegmentation():
 
         nov = (nov-min(nov))/(max(nov)-min(nov)) #normalize
 
-        peaks = self.find_peaks(nov) #maximums in novelty <-> segmentation points
+        energy = rms(y=y,frame_length=self.n_fft,hop_length=self.hop_length)
+
+        peaks = self.find_peaks(nov, energy) #maximums in novelty <-> segmentation points
 
         points = np.concatenate([[0],peaks,[len(y)]])
 
