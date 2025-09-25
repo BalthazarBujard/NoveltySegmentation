@@ -33,7 +33,7 @@ class MultiGranularSegmentation():
 
     def _compute_causal_dssm(self,y):
         #compute SSM from STFT
-        ssm = compute_ssm(y, self.n_fft)
+        ssm = compute_ssm(y, self.n_fft,self.hop_length)
         #remove future events from SSM
         ssm_causal = ssm
         for i in range(ssm.shape[0]):
